@@ -173,10 +173,10 @@ def draw_panel(win, play_time, strikes, status_msg, layout, difficulty):
     win.blit(stats, (panel_rect.x + 14, panel_rect.y + 46))
 
     instructions = [
-        "• Click a cell, then press 1–9 to pencil-in (gray).",
-        "• Press Enter to commit a penciled number. Wrong commits add a mistake.",
-        "• Press Delete/Backspace to clear a penciled cell. Arrow keys move selection.",
         "• Press N = New game (same difficulty). E/M/H = Easy/Medium/Hard.",
+        "• Click a cell, then press 1-9 to pencil-in (gray).",
+        "• Press Enter to commit a penciled number. Wrong commits add a mistake and clears the cell.",
+        "• Press Delete/Backspace to clear a penciled cell. Arrow keys move selection.",
     ]
     y = panel_rect.y + 74
     for line in instructions:
