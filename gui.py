@@ -1,7 +1,11 @@
-# GUI.py
+# GUI.py (web/desktop compatible)
 import pygame
 import time
+import asyncio  # <-- NEW
 from sudoku import solve, valid, generate_puzzle, DIFFICULTY  # generator + difficulty
+import sys
+
+IS_WEB = sys.platform == "emscripten"
 
 pygame.init()
 pygame.font.init()
@@ -35,9 +39,12 @@ def compute_layout(win):
     panel_h = min(panel_h, h - panel_top - padding)
     panel_rect = pygame.Rect(padding, panel_top, w - padding * 2, panel_h)
     scale = grid_size / 540
-    num_font   = pygame.font.SysFont(None, max(int(42 * scale), 18))
-    text_font  = pygame.font.SysFont(None, max(int(BASE_FONT_SIZE * scale), 14))
-    title_font = pygame.font.SysFont(None, max(int(32 * scale), 16), bold=True)
+
+    # IMPORTANT: use built-in font (None) for web — SysFont can fail in browser
+    num_font   = pygame.font.Font(None, max(int(42 * scale), 18))
+    text_font  = pygame.font.Font(None, max(int(BASE_FONT_SIZE * scale), 14))
+    title_font = pygame.font.Font(None, max(int(32 * scale), 16))
+
     return {
         "w": w, "h": h, "padding": padding,
         "grid_size": grid_size, "grid_x": grid_x, "grid_y": grid_y, "cell_gap": cell_gap,
@@ -62,7 +69,6 @@ class Grid:
         if self.cubes[r][c].value == 0:
             self.cubes[r][c].set(val)
             self.update_model()
-            # Check feasibility without mutating UI state
             model_copy = [row[:] for row in self.model]
             if valid(model_copy, val, (r, c)) and solve(model_copy):
                 return True
@@ -79,19 +85,15 @@ class Grid:
 
     def draw(self, win, layout):
         GX, GY, GS, GAP = layout["grid_x"], layout["grid_y"], layout["grid_size"], layout["cell_gap"]
-
-        # grid lines
         for i in range(self.rows + 1):
             thick = 3 if i % 3 == 0 else 1
             pygame.draw.line(win, SUBGRID_LINE if thick == 3 else GRID_LINE, (GX, GY + i * GAP), (GX + GS, GY + i * GAP), thick)
             pygame.draw.line(win, SUBGRID_LINE if thick == 3 else GRID_LINE, (GX + i * GAP, GY), (GX + i * GAP, GY + GS), thick)
 
-        # cells
         for i in range(self.rows):
             for j in range(self.cols):
                 self.cubes[i][j].draw(win, layout)
 
-        # selection
         if self.selected:
             i, j = self.selected
             x = GX + j * GAP; y = GY + i * GAP
@@ -134,12 +136,10 @@ class Cube:
         self.selected = False
 
     def set(self, val):
-        """Commit a final value and clear any pencil mark."""
         self.value = val
         self.temp = 0
 
     def set_temp(self, val):
-        """Set a pencil (temporary) value."""
         self.temp = val
 
     def draw(self, win, layout):
@@ -148,16 +148,12 @@ class Cube:
         x = GX + self.col * GAP
         y = GY + self.row * GAP
 
-        # Draw pencil mark if present
         if self.temp != 0 and self.value == 0:
             text = text_font.render(str(self.temp), True, (120, 120, 120))
             win.blit(text, (x + 6, y + 4))
-        # Draw committed number
         elif self.value != 0:
             text = num_font.render(str(self.value), True, (20, 20, 20))
-            win.blit(text, (x + (GAP - text.get_width()) // 2,
-                            y + (GAP - text.get_height()) // 2))
-
+            win.blit(text, (x + (GAP - text.get_width()) // 2, y + (GAP - text.get_height()) // 2))
 
 def draw_panel(win, play_time, strikes, status_msg, layout, difficulty):
     panel_rect = layout["panel_rect"]
@@ -201,18 +197,41 @@ def format_time(secs):
     secs = int(secs); m = secs // 60; s = secs % 60
     return f"{m:02d}:{s:02d}"
 
-def main():
-    win = pygame.display.set_mode((900, 1000), pygame.RESIZABLE)
+# ---- ASYNC MAIN LOOP FOR WEB (works on desktop too) ----
+# replace your async main() with this guarded version
+async def main():
+    import asyncio
+    pygame.init()
+    pygame.font.init()
+
+    # Yield one tick so the browser can create the canvas before we ask for it
+    await asyncio.sleep(0)
+
+    # On web: let SDL choose the canvas size and avoid RESIZABLE (can break renderer)
+    # On desktop: keep your original size + RESIZABLE
+    try:
+        if IS_WEB:
+            flags = pygame.SCALED   # no RESIZABLE on web
+            size  = (0, 0)          # let the canvas decide
+        else:
+            flags = pygame.SCALED | pygame.RESIZABLE
+            size  = (900, 1000)
+
+        win = pygame.display.set_mode(size, flags)
+    except pygame.error:
+        # conservative fallback in case the first attempt fails
+        win = pygame.display.set_mode((800, 600))
+
     pygame.display.set_caption("Sudoku")
 
-    current_difficulty = "medium"  # default
+    current_difficulty = "medium"
     board = Grid(GRID_ROWS, GRID_COLS, difficulty=current_difficulty)
-    key = None
     run = True
     start = time.time()
     strikes = 0
     status_msg = ""
     board.select(0, 0)
+    clock = pygame.time.Clock()
 
     while run:
         play_time = round(time.time() - start)
@@ -222,17 +241,15 @@ def main():
             if event.type == pygame.QUIT:
                 run = False
 
-            if event.type == pygame.VIDEORESIZE:
-                win = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+            # Only handle VIDEORESIZE on desktop (web path didn't request RESIZABLE)
+            if (not IS_WEB) and event.type == pygame.VIDEORESIZE:
+                win = pygame.display.set_mode((event.w, event.h), pygame.SCALED | pygame.RESIZABLE)
 
             if event.type == pygame.KEYDOWN:
                 if pygame.K_1 <= event.key <= pygame.K_9:
-                    key = event.key - pygame.K_0
-                    board.sketch(key)
-
+                    board.sketch(event.key - pygame.K_0)
                 elif event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
-                    board.clear(); key = None; status_msg = ""
-
+                    board.clear(); status_msg = ""
                 elif event.key == pygame.K_RETURN:
                     if board.selected:
                         i, j = board.selected
@@ -240,54 +257,33 @@ def main():
                             if board.place(board.cubes[i][j].temp):
                                 status_msg = "Success"
                             else:
-                                status_msg = "Wrong"
-                                strikes += 1
-                            key = None
+                                status_msg = "Wrong"; strikes += 1
                             if board.is_finished():
                                 status_msg = "Solved! 🎉"
-
                 elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
-                    if not board.selected: board.select(0, 0)
-                    else:
-                        i, j = board.selected
-                        if event.key == pygame.K_UP:    i = clamp(i - 1, 0, GRID_ROWS - 1)
-                        if event.key == pygame.K_DOWN:  i = clamp(i + 1, 0, GRID_ROWS - 1)
-                        if event.key == pygame.K_LEFT:  j = clamp(j - 1, 0, GRID_COLS - 1)
-                        if event.key == pygame.K_RIGHT: j = clamp(j + 1, 0, GRID_COLS - 1)
-                        board.select(i, j)
-
-                # New game (same difficulty)
+                    i, j = board.selected or (0, 0)
+                    if event.key == pygame.K_UP:    i = clamp(i - 1, 0, GRID_ROWS - 1)
+                    if event.key == pygame.K_DOWN:  i = clamp(i + 1, 0, GRID_ROWS - 1)
+                    if event.key == pygame.K_LEFT:  j = clamp(j - 1, 0, GRID_COLS - 1)
+                    if event.key == pygame.K_RIGHT: j = clamp(j + 1, 0, GRID_COLS - 1)
+                    board.select(i, j)
                 elif event.key == pygame.K_n:
                     board = Grid(GRID_ROWS, GRID_COLS, difficulty=current_difficulty)
-                    board.select(0, 0)
-                    start = time.time()
-                    strikes = 0
-                    status_msg = "New game started!"
-
-                # Change difficulty + new game
+                    board.select(0, 0); start = time.time(); strikes = 0; status_msg = "New game started!"
                 elif event.key in (pygame.K_e, pygame.K_m, pygame.K_h):
-                    if event.key == pygame.K_e: current_difficulty = "easy"
-                    if event.key == pygame.K_m: current_difficulty = "medium"
-                    if event.key == pygame.K_h: current_difficulty = "hard"
+                    current_difficulty = {pygame.K_e:"easy", pygame.K_m:"medium", pygame.K_h:"hard"}[event.key]
                     board = Grid(GRID_ROWS, GRID_COLS, difficulty=current_difficulty)
-                    board.select(0, 0)
-                    start = time.time()
-                    strikes = 0
-                    status_msg = f"New {current_difficulty.title()} game!"
+                    board.select(0, 0); start = time.time(); strikes = 0; status_msg = f"New {current_difficulty.title()} game!"
 
             if event.type == pygame.MOUSEBUTTONDOWN:
-                pos = pygame.mouse.get_pos()
-                clicked = board.click(pos, layout)
+                clicked = board.click(pygame.mouse.get_pos(), layout)
                 if clicked:
-                    board.select(clicked[0], clicked[1])
-                    key = None
-                    status_msg = ""
+                    board.select(*clicked); status_msg = ""
 
         redraw_window(win, board, play_time, strikes, status_msg, layout, current_difficulty)
-        pygame.display.update()
-
-    pygame.time.wait(600)
-    pygame.quit()
+        pygame.display.flip()
+        clock.tick(60)
+        await asyncio.sleep(0)  # yield to browser
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
