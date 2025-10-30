@@ -1,88 +1,170 @@
-import random 
+# sudoku.py
+import random
 import copy
 
-board = [
-    [7,8,0,4,0,0,1,2,0],
-    [6,0,0,0,7,5,0,0,9],
-    [0,0,0,6,0,1,0,7,8],
-    [0,0,7,0,4,0,2,6,0],
-    [0,0,1,0,5,0,9,3,0],
-    [9,0,4,0,6,0,0,0,5],
-    [0,7,0,3,0,0,0,1,2],
-    [1,2,0,0,0,7,4,0,0],
-    [0,4,9,2,0,6,0,0,7]
-]
+# ---------------- Core solver helpers ----------------
+def find_empty(bo):
+    for i in range(9):
+        for j in range(9):
+            if bo[i][j] == 0:
+                return (i, j)
+    return None
 
+def valid(bo, num, pos):
+    r, c = pos
+    # row
+    for j in range(9):
+        if bo[r][j] == num and j != c:
+            return False
+    # col
+    for i in range(9):
+        if bo[i][c] == num and i != r:
+            return False
+    # box
+    box_x = c // 3
+    box_y = r // 3
+    for i in range(box_y * 3, box_y * 3 + 3):
+        for j in range(box_x * 3, box_x * 3 + 3):
+            if bo[i][j] == num and (i, j) != (r, c):
+                return False
+    return True
 
-def solve(bo): #recursive algorithm with backtracking
-    find = find_empty(bo)
+def solve(board):
+    """Standard backtracking solver (mutates board)."""
+    find = find_empty(board)
     if not find:
         return True
-    else:
-        row, col = find
-#loop through values from 1-9 and try them in the solution
-    for i in range(1,10):
-        if valid(bo, i, (row, col)):
-            bo[row][col] = i #plug in the value if valid
-
-            if solve(bo): #if the solution doesnt fit, use backtracking
+    r, c = find
+    for n in range(1, 10):
+        if valid(board, n, (r, c)):
+            board[r][c] = n
+            if solve(board):
                 return True
-
-            bo[row][col] = 0 #backtracking. if there is a mistake, we will reset it to blank and go back and try another number
-
+            board[r][c] = 0
     return False
 
+def solve_randomized(board):
+    """Backtracking with randomized number order (for generator)."""
+    find = find_empty(board)
+    if not find:
+        return True
+    r, c = find
+    nums = list(range(1, 10))
+    random.shuffle(nums)
+    for n in nums:
+        if valid(board, n, (r, c)):
+            board[r][c] = n
+            if solve_randomized(board):
+                return True
+            board[r][c] = 0
+    return False
 
-def valid(bo, num, pos):#check if the board is valid
-    # Check row
-    for i in range(len(bo[0])):
-        if bo[pos[0]][i] == num and pos[1] != i:#checks though each position in the row and see if it can insert a value
-            return False
+def solve_count(board, limit=2):
+    """Count solutions up to 'limit' to test uniqueness. Returns count (<=limit)."""
+    count = 0
 
-    # Check column
-    for i in range(len(bo)):
-        if bo[i][pos[1]] == num and pos[0] != i:#loops through every row going down to see the position
-            return False
+    def backtrack():
+        nonlocal count
+        if count >= limit:
+            return
+        find = find_empty(board)
+        if not find:
+            count += 1
+            return
+        r, c = find
+        for n in range(1, 10):
+            if valid(board, n, (r, c)):
+                board[r][c] = n
+                backtrack()
+                board[r][c] = 0
+                if count >= limit:
+                    return
 
-    # Check the little square within the smaller grids
-    #determine which box we're in:
-    box_x = pos[1] // 3
-    box_y = pos[0] // 3
-    #loop through all 9 elements in the box and make sure that the numbers are not repeated:
-    for i in range(box_y*3, box_y*3 + 3): #to get to exact index
-        for j in range(box_x * 3, box_x*3 + 3):
-            if bo[i][j] == num and (i,j) != pos:
-                return False
+    backtrack()
+    return count
 
-    return True #if we found a valid position
+# ---------------- Generation ----------------
+# Difficulty presets via "target clues" (higher = easier).
+DIFFICULTY = {
+    "easy":   {"min_clues": 40, "max_clues": 45},
+    "medium": {"min_clues": 32, "max_clues": 38},
+    "hard":   {"min_clues": 26, "max_clues": 31},
+}
 
+def generate_full_board():
+    board = [[0 for _ in range(9)] for _ in range(9)]
+    solve_randomized(board)
+    return board
 
-def print_board(bo):
-    for i in range(len(bo)):
-        if i % 3 == 0 and i != 0:
-            print("- - - - - - - - - - - - - ")
+def generate_puzzle(difficulty="medium", symmetric=True, max_attempts=10):
+    """
+    Generate a unique-solution puzzle.
+    - difficulty: 'easy' | 'medium' | 'hard'
+    - symmetric: remove cells in rotational symmetry pairs for aesthetics
+    """
+    if difficulty not in DIFFICULTY:
+        difficulty = "medium"
+    full = generate_full_board()
+    puzzle = copy.deepcopy(full)
 
-        for j in range(len(bo[0])):
-            if j % 3 == 0 and j != 0:
-                print(" | ", end="")
+    # How many clues we want to keep
+    target = random.randint(DIFFICULTY[difficulty]["min_clues"], DIFFICULTY[difficulty]["max_clues"])
+    clues = 81  # start full
+    attempts = 0
 
-            if j == 8:
-                print(bo[i][j])
-            else:
-                print(str(bo[i][j]) + " ", end="")
+    # Precompute cell order
+    cells = [(r, c) for r in range(9) for c in range(9)]
+    random.shuffle(cells)
 
+    def symmetric_pair(r, c):
+        return (8 - r, 8 - c)
 
-def find_empty(bo):
-    for i in range(len(bo)):
-        for j in range(len(bo[0])):
-            if bo[i][j] == 0:
-                return (i, j)  # row, col
+    idx = 0
+    while clues > target and attempts < 2000 and idx < len(cells):
+        r, c = cells[idx]
+        idx += 1
 
-    return None #if there are no blank squares
+        if puzzle[r][c] == 0:
+            continue
 
-print(print_board(board))
-print(solve(board))
-print("____________________")
-print(print_board(board))
+        if symmetric:
+            r2, c2 = symmetric_pair(r, c)
+        else:
+            r2, c2 = r, c
 
-#use this file to check and see if the entry is valid when people use the GUI
+        # Remember values
+        v1 = puzzle[r][c]
+        v2 = puzzle[r2][c2]
+
+        # Remove one or two cells (if symmetric pair is different)
+        puzzle[r][c] = 0
+        removed = 1
+        if (r2, c2) != (r, c) and puzzle[r2][c2] != 0:
+            puzzle[r2][c2] = 0
+            removed = 2
+
+        # Check uniqueness
+        test = copy.deepcopy(puzzle)
+        if solve_count(test, limit=2) == 1:
+            clues -= removed
+            attempts = 0  # reset attempts after a successful removal
+        else:
+            # revert
+            puzzle[r][c] = v1
+            if removed == 2:
+                puzzle[r2][c2] = v2
+            attempts += 1
+            if attempts > max_attempts:
+                # give up on symmetry if too hard
+                symmetric = False
+                attempts = 0
+
+    return puzzle
+
+# --- Optional small utilities ---
+def copy_board(bo):
+    return [row[:] for row in bo]
+
+def solve_copy(bo):
+    clone = copy_board(bo)
+    return clone if solve(clone) else None
