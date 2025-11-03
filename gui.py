@@ -211,7 +211,7 @@ async def main():
     # On desktop: keep your original size + RESIZABLE
     try:
         if IS_WEB:
-            flags = pygame.SCALED   # no RESIZABLE on web
+            flags = 0   # no RESIZABLE on web
             size  = (0, 0)          # let the canvas decide
         else:
             flags = pygame.SCALED | pygame.RESIZABLE
