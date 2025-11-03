@@ -1,8 +1,7 @@
-# GUI.py (web/desktop compatible)
 import pygame
 import time
-import asyncio  # <-- NEW
-from sudoku import solve, valid, generate_puzzle, DIFFICULTY  # generator + difficulty
+import asyncio
+from sudoku import solve, valid, generate_puzzle, DIFFICULTY
 import sys
 
 IS_WEB = sys.platform == "emscripten"
@@ -40,7 +39,6 @@ def compute_layout(win):
     panel_rect = pygame.Rect(padding, panel_top, w - padding * 2, panel_h)
     scale = grid_size / 540
 
-    # IMPORTANT: use built-in font (None) for web — SysFont can fail in browser
     num_font   = pygame.font.Font(None, max(int(42 * scale), 18))
     text_font  = pygame.font.Font(None, max(int(BASE_FONT_SIZE * scale), 14))
     title_font = pygame.font.Font(None, max(int(32 * scale), 16))
@@ -197,29 +195,23 @@ def format_time(secs):
     secs = int(secs); m = secs // 60; s = secs % 60
     return f"{m:02d}:{s:02d}"
 
-# ---- ASYNC MAIN LOOP FOR WEB (works on desktop too) ----
-# replace your async main() with this guarded version
 async def main():
     import asyncio
     pygame.init()
     pygame.font.init()
 
-    # Yield one tick so the browser can create the canvas before we ask for it
     await asyncio.sleep(0)
 
-    # On web: let SDL choose the canvas size and avoid RESIZABLE (can break renderer)
-    # On desktop: keep your original size + RESIZABLE
     try:
         if IS_WEB:
-            flags = 0   # no RESIZABLE on web
-            size  = (0, 0)          # let the canvas decide
+            flags = 0
+            size  = (0, 0)
         else:
             flags = pygame.SCALED | pygame.RESIZABLE
             size  = (900, 1000)
 
         win = pygame.display.set_mode(size, flags)
     except pygame.error:
-        # conservative fallback in case the first attempt fails
         win = pygame.display.set_mode((800, 600))
 
     pygame.display.set_caption("Sudoku")
@@ -241,7 +233,6 @@ async def main():
             if event.type == pygame.QUIT:
                 run = False
 
-            # Only handle VIDEORESIZE on desktop (web path didn't request RESIZABLE)
             if (not IS_WEB) and event.type == pygame.VIDEORESIZE:
                 win = pygame.display.set_mode((event.w, event.h), pygame.SCALED | pygame.RESIZABLE)
 
@@ -283,7 +274,7 @@ async def main():
         redraw_window(win, board, play_time, strikes, status_msg, layout, current_difficulty)
         pygame.display.flip()
         clock.tick(60)
-        await asyncio.sleep(0)  # yield to browser
+        await asyncio.sleep(0)
 
 if __name__ == "__main__":
     asyncio.run(main())
