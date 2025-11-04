@@ -189,10 +189,6 @@ def format_time(secs):
     return f"{m:02d}:{s:02d}"
 
 async def main():
-    import asyncio
-    pygame.init()
-    pygame.font.init()
-
     await asyncio.sleep(0)
 
     try:
@@ -246,10 +242,14 @@ async def main():
                                 status_msg = "Solved!!"
                 elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
                     i, j = board.selected or (0, 0)
-                    if event.key == pygame.K_UP:    i = clamp(i - 1, 0, GRID_ROWS - 1)
-                    if event.key == pygame.K_DOWN:  i = clamp(i + 1, 0, GRID_ROWS - 1)
-                    if event.key == pygame.K_LEFT:  j = clamp(j - 1, 0, GRID_COLS - 1)
-                    if event.key == pygame.K_RIGHT: j = clamp(j + 1, 0, GRID_COLS - 1)
+                    if event.key == pygame.K_UP: 
+                        i = clamp(i - 1, 0, GRID_ROWS - 1)
+                    if event.key == pygame.K_DOWN:
+                        i = clamp(i + 1, 0, GRID_ROWS - 1)
+                    if event.key == pygame.K_LEFT:
+                        j = clamp(j - 1, 0, GRID_COLS - 1)
+                    if event.key == pygame.K_RIGHT:
+                        j = clamp(j + 1, 0, GRID_COLS - 1)
                     board.select(i, j)
                 elif event.key == pygame.K_n:
                     board = Grid(GRID_ROWS, GRID_COLS, difficulty=current_difficulty)
