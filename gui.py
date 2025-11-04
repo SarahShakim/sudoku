@@ -33,6 +33,9 @@ PANEL_MIN_PX = 160
 GRID_REFERENCE_PX = 540
 
 font_cache = {} #{(path, size): pygame.font.Font}
+panel_static_cache = {}
+panel_stats_cache = {}
+panel_status_cache = {}
 
 def clamp(v, lo, hi): return max(lo, min(hi, v))
 
@@ -188,18 +191,14 @@ class Cube:
             text = num_font.render(str(self.value), True, (20, 20, 20))
             win.blit(text, (x + (GAP - text.get_width()) // 2, y + (GAP - text.get_height()) // 2))
 
-def draw_panel(win, play_time, strikes, status_msg, layout, difficulty):
-    panel_rect = layout["panel_rect"]
-    title_font, text_font = layout["title_font"], layout["text_font"]
+def get_static_panel_assets(difficulty, title_font, text_font, panel_width):
+    key = (difficulty, title_font.get_height(), text_font.get_height, panel_width)
+    cached = panel_static_cache.get(key)
 
-    pygame.draw.rect(win, PANEL_BG, panel_rect, border_radius=10)
-    pygame.draw.rect(win, PANEL_BORDER, panel_rect, width=1, border_radius=10)
-
-    title = title_font.render(f"Sudoku — {difficulty.title()} — Instructions", True, PANEL_TEXT)
-    win.blit(title, (panel_rect.x + 14, panel_rect.y + 10))
-
-    stats = text_font.render(f"Time: {format_time(play_time)}    Mistakes: {strikes}", True, PANEL_TEXT)
-    win.blit(stats, (panel_rect.x + 14, panel_rect.y + 46))
+    if cached: 
+        return cached
+    
+    title_text = f"Sudoku — {difficulty.title()} — Instructions"
 
     instructions = [
         "• Press N = New game (same difficulty). E/M/H = Easy/Medium/Hard.",
@@ -207,17 +206,84 @@ def draw_panel(win, play_time, strikes, status_msg, layout, difficulty):
         "• Press Enter to commit a penciled number. Wrong commits add a mistake and clears the cell.",
         "• Press Delete/Backspace to clear a penciled cell. Arrow keys move selection.",
     ]
-    y = panel_rect.y + 74
-    for line in instructions:
-        t = text_font.render(line, True, (50, 50, 50))
-        win.blit(t, (panel_rect.x + 14, y))
-        y += int(text_font.get_height() * 1.2)
 
-    if status_msg:
-        good = ("Success" in status_msg) or ("Solved" in status_msg)
-        color = (0, 120, 0) if good else (170, 0, 0)
-        msg = text_font.render(status_msg, True, color)
-        win.blit(msg, (panel_rect.right - msg.get_width() - 14, panel_rect.y + 12))
+    title_surface = title_font.render(title_text, True, PANEL_TEXT)
+
+    instruction_surfaces = [text_font.render(line, True, (50, 50, 50)) for line in instructions]
+    line_height = int(text_font.get_height() * 1.2)
+
+    title_position = (14, 10)
+    stats_position = (14, 46)
+    instructions_start_y = 74
+
+    cached = {
+        "title_surf": title_surface,
+        "title_pos_rel": title_position,
+        "stats_pos_rel": stats_position,
+        "instr_surfs": instruction_surfaces,
+        "instr_positions_rel": [(14, instructions_start_y + i * line_height) for i in range(len(instruction_surfaces))],
+        "line_height": line_height,
+    }
+
+    panel_static_cache[key] = cached
+
+    return cached
+
+def get_stats_surface(text_font, play_time, strikes):
+    second = int(play_time)
+    fkey = text_font.get_height()
+    bucket = panel_stats_cache.setdefault(fkey, {"last": None, "surf": None})
+
+    if bucket["last"] != (second, strikes):
+        bucket["last"] = (second, strikes)
+        surface = text_font.render(f"Time: {format_time(second)}    Mistakes: {strikes}", True, PANEL_TEXT)
+        bucket["surf"] = surface
+    
+    return bucket["surf"]
+
+def get_status_surface(text_font, status_msg):
+    fkey = text_font.get_height()
+    bucket = panel_status_cache.setdefault(fkey, {"last_msg": None, "surf": None})
+
+    if bucket["last_msg"] != status_msg:
+        bucket["last_msg"] = status_msg
+        if status_msg: 
+            good = ("Success" in status_msg) or ("Solved" in status_msg)
+            color = (0, 120, 0) if good else (170, 0, 0)
+            bucket["surf"] = text_font.render(status_msg, True, color)
+        else:
+            bucket["surf"] = None
+    
+    return bucket["surf"]
+
+def draw_panel(win, play_time, strikes, status_msg, layout, difficulty):
+    panel_rect = layout["panel_rect"]
+    title_font, text_font = layout["title_font"], layout["text_font"]
+
+    pygame.draw.rect(win, PANEL_BG, panel_rect, border_radius=10)
+    pygame.draw.rect(win, PANEL_BORDER, panel_rect, width=1, border_radius=10)
+
+    assets = get_static_panel_assets(difficulty, title_font, text_font, panel_rect.w)
+
+    stats_surface = get_stats_surface(text_font, play_time, strikes)
+
+    status_surface = get_status_surface(text_font, status_msg)
+
+    ox, oy = panel_rect.x, panel_rect.y
+    items = [
+        (assets["title_surf"], (ox + assets["title_pos_rel"][0], oy + assets["title_pos_rel"][1])),
+        (stats_surface, (ox + assets["stats_pos_rel"][0], oy + assets["stats_pos_rel"][1])),
+    ]
+
+    items.extend(
+        (surf, (ox + px, oy + py))
+        for surf, (px, py) in zip(assets["instr_surfs"], assets["instr_positions_rel"])
+    )
+
+    if status_surface:
+        items.append((status_surface, (panel_rect.right - status_surface.get_width() - 14, panel_rect.y + 12)))
+
+    win.blits(items)
 
 def redraw_window(win, board, play_time, strikes, status_msg, layout, difficulty):
     win.fill(BG_COLOR)
@@ -285,7 +351,7 @@ async def main():
                             else:
                                 status_msg = "Wrong"; strikes += 1
                             if board.is_finished():
-                                status_msg = "Solved! 🎉"
+                                status_msg = "Solved!!"
                 elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
                     i, j = board.selected or (0, 0)
                     if event.key == pygame.K_UP:    i = clamp(i - 1, 0, GRID_ROWS - 1)
