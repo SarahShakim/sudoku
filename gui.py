@@ -23,31 +23,65 @@ PANEL_BORDER = (220, 220, 220)
 
 BASE_FONT_SIZE = 24
 
+MIN_W, MIN_H = 560, 640
+PADDING_FACTOR = 0.03
+GRID_FACTOR = 0.70
+GRID_MARGIN_TOP = 10
+PANEL_SPACING = 15
+PANEL_MIN_FACTOR = 0.22
+PANEL_MIN_PX = 160
+GRID_REFERENCE_PX = 540
+
+font_cache = {} #{(path, size): pygame.font.Font}
+
 def clamp(v, lo, hi): return max(lo, min(hi, v))
 
 def compute_layout(win):
     w, h = win.get_size()
-    w = max(w, 560); h = max(h, 640)
-    padding = int(min(w, h) * 0.03)
-    grid_size = int(min(w, h) * 0.70)
-    grid_x = (w - grid_size) // 2
-    grid_y = padding + 10
-    cell_gap = grid_size // GRID_ROWS
-    panel_top = grid_y + grid_size + 15
-    panel_h = max(int(h * 0.22), 160)
-    panel_h = min(panel_h, h - panel_top - padding)
-    panel_rect = pygame.Rect(padding, panel_top, w - padding * 2, panel_h)
-    scale = grid_size / 540
+    w = max(w, MIN_W)
+    h = max(h, MIN_H)
 
-    num_font   = pygame.font.Font(None, max(int(42 * scale), 18))
-    text_font  = pygame.font.Font(None, max(int(BASE_FONT_SIZE * scale), 14))
-    title_font = pygame.font.Font(None, max(int(32 * scale), 16))
+    smin = w if w < h else h
+
+    padding = int(smin * PADDING_FACTOR)
+    grid_size = int(smin * GRID_FACTOR)
+    grid_x = (w - grid_size) // 2
+    grid_y = padding + GRID_MARGIN_TOP
+    cell_gap = grid_size // GRID_ROWS
+
+    panel_top = grid_y + grid_size + PANEL_SPACING
+
+    panel_h_tgt = int(h * PANEL_MIN_FACTOR)
+    panel_h_max = max(0, h - panel_top - padding)
+    panel_h = clamp(panel_h_tgt, PANEL_MIN_PX, panel_h_max)
+
+    panel_rect = pygame.Rect(padding, panel_top, w - padding * 2, panel_h)
+
+    scale = grid_size / GRID_REFERENCE_PX
+
+    num_size = max(int(42 * scale), 18)
+    text_size = max(int(BASE_FONT_SIZE * scale), 14)
+    title_size = max(int(32 * scale), 16)
+
+    num_font   = get_font(num_size)
+    text_font  = get_font(text_size)
+    title_font = get_font(title_size)
 
     return {
         "w": w, "h": h, "padding": padding,
         "grid_size": grid_size, "grid_x": grid_x, "grid_y": grid_y, "cell_gap": cell_gap,
         "panel_rect": panel_rect, "num_font": num_font, "text_font": text_font, "title_font": title_font
     }
+
+def get_font(size, path=None):
+    key = (path, int(size))
+    f = font_cache.get(key)
+    
+    if f is None: 
+        f = pygame.font.Font(path, int(size))
+        font_cache[key] = f
+    
+    return f
 
 class Grid:
     def __init__(self, rows, cols, difficulty="medium"):
@@ -114,7 +148,8 @@ class Grid:
         x, y = pos
         GX, GY, GS, GAP = layout["grid_x"], layout["grid_y"], layout["grid_size"], layout["cell_gap"]
         if GX <= x < GX + GS and GY <= y < GY + GS:
-            j = (x - GX) // GAP; i = (y - GY) // GAP
+            j = (x - GX) // GAP
+            i = (y - GY) // GAP
             return int(i), int(j)
         return None
 
