@@ -3,6 +3,7 @@ import time
 import asyncio
 from sudoku import solve, valid, generate_puzzle, DIFFICULTY
 import sys
+from cube import Cube
 
 IS_WEB = sys.platform == "emscripten"
 
@@ -163,34 +164,6 @@ class Grid:
                     return False
         return True
 
-class Cube:
-    def __init__(self, value, row, col):
-        self.value = value
-        self.temp = 0
-        self.row = row
-        self.col = col
-        self.selected = False
-
-    def set(self, val):
-        self.value = val
-        self.temp = 0
-
-    def set_temp(self, val):
-        self.temp = val
-
-    def draw(self, win, layout):
-        GX, GY, GAP = layout["grid_x"], layout["grid_y"], layout["cell_gap"]
-        num_font, text_font = layout["num_font"], layout["text_font"]
-        x = GX + self.col * GAP
-        y = GY + self.row * GAP
-
-        if self.temp != 0 and self.value == 0:
-            text = text_font.render(str(self.temp), True, (120, 120, 120))
-            win.blit(text, (x + 6, y + 4))
-        elif self.value != 0:
-            text = num_font.render(str(self.value), True, (20, 20, 20))
-            win.blit(text, (x + (GAP - text.get_width()) // 2, y + (GAP - text.get_height()) // 2))
-
 def get_static_panel_assets(difficulty, title_font, text_font, panel_width):
     key = (difficulty, title_font.get_height(), text_font.get_height, panel_width)
     cached = panel_static_cache.get(key)
@@ -203,8 +176,8 @@ def get_static_panel_assets(difficulty, title_font, text_font, panel_width):
     instructions = [
         "• Press N = New game (same difficulty). E/M/H = Easy/Medium/Hard.",
         "• Click a cell, then press 1-9 to pencil-in (gray).",
-        "• Press Enter to commit a penciled number. Wrong commits add a mistake and clears the cell.",
-        "• Press Delete/Backspace to clear a penciled cell. Arrow keys move selection.",
+        "• Press Enter to commit a penciled number.\n  Wrong commits add a mistake and clears the cell.",
+        "\n• Press Delete/Backspace to clear a penciled cell. Arrow keys move selection.",
     ]
 
     title_surface = title_font.render(title_text, True, PANEL_TEXT)
