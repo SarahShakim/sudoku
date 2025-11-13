@@ -7,20 +7,42 @@ DIFFICULTY = {
     "hard":   {"min_clues": 26, "max_clues": 31},
 }
 
+N = 9
+
+def board_copy(board):
+    return [row[:] for row in board]
+
+def make_symmetry_pairs():
+    pairs = []
+    seen = set()
+    for r in range(N):
+        for c in range(N):
+            r2, c2 = (N-1-r, N-1-c)
+            a, b = (r, c), (r2, c2)
+            key = tuple(sorted([a, b]))
+            if key in seen:
+                continue
+            seen.add(key)
+            is_pair = (a != b)
+            pairs.append((a[0], a[1], b[0], b[1], is_pair))
+    random.shuffle(pairs)
+    return pairs
+
 def generate_puzzle(difficulty="medium", symmetric=True, max_attempts=10):
     """
     Generate a unique-solution puzzle.
     - difficulty: 'easy' | 'medium' | 'hard'
     - symmetric: remove cells in rotational symmetry pairs for aesthetics
     """
-    if difficulty not in DIFFICULTY:
-        difficulty = "medium"
+
+    difficulty = difficulty if difficulty in DIFFICULTY else "medium"
     full = generate_full_board()
-    puzzle = copy.deepcopy(full)
+    puzzle = board_copy(full)
 
     # How many clues we want to keep
     target = random.randint(DIFFICULTY[difficulty]["min_clues"], DIFFICULTY[difficulty]["max_clues"])
-    clues = 81  # start full
+    clues = N * N
+    
     attempts = 0
 
     # Precompute cell order
@@ -43,30 +65,25 @@ def generate_puzzle(difficulty="medium", symmetric=True, max_attempts=10):
         else:
             r2, c2 = r, c
 
-        # Remember values
         v1 = puzzle[r][c]
         v2 = puzzle[r2][c2]
 
-        # Remove one or two cells (if symmetric pair is different)
         puzzle[r][c] = 0
         removed = 1
         if (r2, c2) != (r, c) and puzzle[r2][c2] != 0:
             puzzle[r2][c2] = 0
             removed = 2
 
-        # Check uniqueness
         test = copy.deepcopy(puzzle)
         if solve_count(test, limit=2) == 1:
             clues -= removed
-            attempts = 0  # reset attempts after a successful removal
+            attempts = 0
         else:
-            # revert
             puzzle[r][c] = v1
             if removed == 2:
                 puzzle[r2][c2] = v2
             attempts += 1
             if attempts > max_attempts:
-                # give up on symmetry if too hard
                 symmetric = False
                 attempts = 0
 
