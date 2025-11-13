@@ -31,7 +31,7 @@ def make_symmetry_pairs():
 def generate_puzzle(difficulty="medium", symmetric=True, max_attempts=10):
     """
     Generate a unique-solution puzzle.
-    - difficulty: 'easy' | 'medium' | 'hard'
+    - difficulty: 'easy', 'medium', 'hard'
     - symmetric: remove cells in rotational symmetry pairs for aesthetics
     """
 
@@ -39,13 +39,11 @@ def generate_puzzle(difficulty="medium", symmetric=True, max_attempts=10):
     full = generate_full_board()
     puzzle = board_copy(full)
 
-    # How many clues we want to keep
     target = random.randint(DIFFICULTY[difficulty]["min_clues"], DIFFICULTY[difficulty]["max_clues"])
     clues = N * N
     
     attempts = 0
 
-    # Precompute cell order
     cells = [(r, c) for r in range(9) for c in range(9)]
     random.shuffle(cells)
 
